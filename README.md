@@ -17,4 +17,4 @@ Librerias y dependencias:
 - **firebase/firestore**: Base de datos NoSQL de Firebase, flexible y escalable para almacenar y sincronizar datos en tiempo real.
 - **firebase/auth**: Servicio de autenticación de Firebase para gestionar usuarios, inicio de sesión y registro.
 Link del video:
-[https://drive.google.com/file/d/1IlcCW37BeYbKh6zzY-633dnSFF3YY3nD/view?usp=sharing](url)
+https://drive.google.com/file/d/1IlcCW37BeYbKh6zzY-633dnSFF3YY3nD/view?usp=sharing
