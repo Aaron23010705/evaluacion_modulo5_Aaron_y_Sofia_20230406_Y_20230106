@@ -1,30 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { auth, database } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 
 const HomeScreen = ({ navigation }) => {
     // Estado para la información del usuario
     const [usuario, setUsuario] = useState(null);
     const [cargando, setCargando] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [errorConexion, setErrorConexion] = useState(false);
 
-    // Obtener información del usuario al cargar la pantalla
-    useEffect(() => {
-        obtenerInformacionUsuario();
-    }, []);
-
-    // Función para obtener la información del usuario desde Firestore
-    const obtenerInformacionUsuario = async () => {
+    // 🔄 FUNCIÓN PRINCIPAL PARA OBTENER INFORMACIÓN (OPTIMIZADA)
+    const obtenerInformacionUsuario = useCallback(async (mostrarLoader = true) => {
         try {
+            if (mostrarLoader) {
+                setCargando(true);
+            }
+
             const user = auth.currentUser;
             if (user) {
-                console.log('Usuario autenticado:', user.uid);
+                console.log('🔄 Actualizando información del usuario:', user.uid);
                 
-                // Primero establecer datos básicos de Auth inmediatamente
+                // Datos básicos inmediatos de Auth
                 const datosBasicos = {
                     uid: user.uid,
                     nombre: user.displayName || 'Usuario',
@@ -33,72 +34,129 @@ const HomeScreen = ({ navigation }) => {
                     especialidad: 'Cargando...',
                     fechaRegistro: null
                 };
-                setUsuario(datosBasicos);
-                setCargando(false); // Mostrar la pantalla inmediatamente con datos básicos
                 
-                // Luego intentar obtener datos adicionales de Firestore en segundo plano
+                setUsuario(datosBasicos);
+                if (mostrarLoader) {
+                    setCargando(false);
+                }
+                
+                // Obtener datos adicionales de Firestore
                 try {
-                    console.log('Intentando obtener datos adicionales de Firestore...');
+                    console.log('📊 Obteniendo datos completos de Firestore...');
                     
-                    // Timeout para evitar esperas largas
                     const timeoutPromise = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Timeout')), 5000)
+                        setTimeout(() => reject(new Error('Timeout')), 8000)
                     );
                     
                     const firestorePromise = getDoc(doc(database, 'usuarios', user.uid));
-                    
                     const userDoc = await Promise.race([firestorePromise, timeoutPromise]);
                     
                     if (userDoc.exists()) {
-                        console.log('Documento encontrado en Firestore');
+                        console.log('✅ Datos actualizados desde Firestore');
                         const userData = userDoc.data();
-                        setUsuario(prevUser => ({
-                            ...prevUser,
+                        
+                        // Actualizar con todos los datos de Firestore
+                        const datosCompletos = {
+                            uid: user.uid,
                             nombre: userData.nombre || user.displayName || 'Usuario',
                             correo: userData.correo || user.email,
                             edad: userData.edad || 'No especificada',
                             especialidad: userData.especialidad || 'No especificada',
-                            fechaRegistro: userData.fechaRegistro
-                        }));
+                            fechaRegistro: userData.fechaRegistro,
+                            // Datos adicionales útiles
+                            activo: userData.activo,
+                            plataforma: userData.plataforma,
+                            ultimaActualizacion: userData.ultimaActualizacion,
+                            version: userData.version
+                        };
+                        
+                        setUsuario(datosCompletos);
                         setErrorConexion(false);
-                        console.log('Datos actualizados desde Firestore');
+                        
+                        console.log('📋 Información completa cargada:', {
+                            nombre: datosCompletos.nombre,
+                            correo: datosCompletos.correo,
+                            edad: datosCompletos.edad,
+                            especialidad: datosCompletos.especialidad
+                        });
+                        
                     } else {
-                        console.log('Documento no encontrado en Firestore');
+                        console.log('⚠️ Documento no encontrado en Firestore');
                         setUsuario(prevUser => ({
                             ...prevUser,
-                            edad: 'No especificada',
-                            especialidad: 'No especificada'
+                            edad: 'No registrada',
+                            especialidad: 'No registrada'
                         }));
+                        // Opcional: Mostrar alerta para completar perfil
+                        Alert.alert(
+                            'Perfil Incompleto',
+                            'No se encontró información adicional. ¿Deseas completar tu perfil?',
+                            [
+                                { text: 'Más tarde', style: 'cancel' },
+                                { text: 'Completar', onPress: () => editarPerfil() }
+                            ]
+                        );
                     }
                 } catch (firestoreError) {
-                    console.error('Error de Firestore:', firestoreError);
+                    console.error('❌ Error de Firestore:', firestoreError.message);
                     
-                    // Actualizar con datos por defecto si Firestore falla
                     setUsuario(prevUser => ({
                         ...prevUser,
                         edad: 'No disponible (sin conexión)',
                         especialidad: 'No disponible (sin conexión)'
                     }));
                     setErrorConexion(true);
-                    console.log('Firestore no disponible, manteniendo datos básicos de Auth');
                 }
             } else {
-                console.log('No hay usuario autenticado');
-                // No navegues manualmente aquí, el Navigation component lo manejará
+                console.log('⚠️ No hay usuario autenticado');
             }
         } catch (error) {
-            console.error('Error general al obtener información del usuario:', error);
-            setCargando(false);
+            console.error('❌ Error general:', error);
             Alert.alert('Error', 'No se pudo cargar la información del usuario');
+        } finally {
+            setCargando(false);
+            setRefreshing(false);
         }
-    };
+    }, []);
 
-    // Función para reintentar la conexión
-    const reintentarConexion = () => {
-        setCargando(true);
+    // 🎯 USAR useFocusEffect PARA RECARGAR AL VOLVER A LA PANTALLA
+    useFocusEffect(
+        useCallback(() => {
+            console.log('🎯 Pantalla enfocada - Recargando información...');
+            obtenerInformacionUsuario(false); // No mostrar loader al regresar
+        }, [obtenerInformacionUsuario])
+    );
+
+    // 🔄 CARGAR INFORMACIÓN AL MONTAR COMPONENTE
+    useEffect(() => {
+        console.log('🚀 Componente montado - Carga inicial');
+        obtenerInformacionUsuario(true);
+    }, [obtenerInformacionUsuario]);
+
+    // 🔄 FUNCIÓN PARA PULL-TO-REFRESH
+    const onRefresh = useCallback(async () => {
+        console.log('🔄 Pull-to-refresh activado');
+        setRefreshing(true);
+        await obtenerInformacionUsuario(false);
+    }, [obtenerInformacionUsuario]);
+
+    // 🔄 FUNCIÓN PARA REINTENTAR CONEXIÓN
+    const reintentarConexion = useCallback(() => {
+        console.log('🔁 Reintentando conexión...');
         setErrorConexion(false);
-        obtenerInformacionUsuario();
-    };
+        obtenerInformacionUsuario(true);
+    }, [obtenerInformacionUsuario]);
+
+    // 🔄 FUNCIÓN PÚBLICA PARA FORZAR ACTUALIZACIÓN (llamable desde otras pantallas)
+    const actualizarInformacion = useCallback(() => {
+        console.log('🔄 Actualización forzada solicitada');
+        obtenerInformacionUsuario(false);
+    }, [obtenerInformacionUsuario]);
+
+    // Exponer función para que otras pantallas puedan llamarla
+    React.useEffect(() => {
+        navigation.setParams({ actualizarInformacion });
+    }, [navigation, actualizarInformacion]);
 
     // Función para cerrar sesión
     const cerrarSesion = () => {
@@ -116,8 +174,6 @@ const HomeScreen = ({ navigation }) => {
                     onPress: async () => {
                         try {
                             await signOut(auth);
-                            // No necesitas navigate porque el Navigation component
-                            // manejará automáticamente el cambio cuando user sea null
                         } catch (error) {
                             console.error('Error al cerrar sesión:', error);
                             Alert.alert('Error', 'No se pudo cerrar la sesión');
@@ -130,7 +186,14 @@ const HomeScreen = ({ navigation }) => {
 
     // Función para navegar a la pantalla de edición
     const editarPerfil = () => {
-        navigation.navigate('EditProfile', { usuario });
+        navigation.navigate('EditProfile', { 
+            usuario,
+            onUpdate: () => {
+                // Callback para actualizar cuando se edite el perfil
+                console.log('🔄 Perfil editado - Actualizando información...');
+                obtenerInformacionUsuario(false);
+            }
+        });
     };
 
     // Función para formatear la fecha
@@ -148,8 +211,8 @@ const HomeScreen = ({ navigation }) => {
         }
     };
 
-    // Mostrar loading mientras se cargan los datos
-    if (cargando) {
+    // Mostrar loading inicial
+    if (cargando && !usuario) {
         return (
             <LinearGradient colors={['#667eea', '#764ba2']} style={styles.container}>
                 <View style={styles.loadingContainer}>
@@ -162,13 +225,24 @@ const HomeScreen = ({ navigation }) => {
 
     return (
         <LinearGradient colors={['#667eea', '#764ba2']} style={styles.container}>
-            <ScrollView contentContainerStyle={styles.scrollContainer}>
+            <ScrollView 
+                contentContainerStyle={styles.scrollContainer}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor="#fff"
+                        title="Actualizando información..."
+                        titleColor="#fff"
+                    />
+                }
+            >
                 {/* Indicador de error de conexión */}
                 {errorConexion && (
                     <View style={styles.errorBanner}>
                         <Ionicons name="warning-outline" size={20} color="#ff9800" />
                         <Text style={styles.errorBannerText}>
-                            Conexión limitada - Mostrando datos básicos
+                            Conexión limitada - Datos parciales
                         </Text>
                         <TouchableOpacity onPress={reintentarConexion} style={styles.retryButton}>
                             <Text style={styles.retryButtonText}>Reintentar</Text>
@@ -176,19 +250,41 @@ const HomeScreen = ({ navigation }) => {
                     </View>
                 )}
 
-                {/* Header con bienvenida */}
+                {/* Header con bienvenida y botón refresh */}
                 <View style={styles.header}>
                     <View style={styles.welcomeContainer}>
                         <Text style={styles.welcomeText}>¡Bienvenido!</Text>
                         <Text style={styles.userName}>{usuario?.nombre}</Text>
                     </View>
-                    <TouchableOpacity style={styles.logoutButton} onPress={cerrarSesion}>
-                        <Ionicons name="log-out-outline" size={24} color="#fff" />
-                    </TouchableOpacity>
+                    <View style={styles.headerButtons}>
+                        <TouchableOpacity 
+                            style={styles.refreshButton} 
+                            onPress={() => obtenerInformacionUsuario(false)}
+                            disabled={refreshing}
+                        >
+                            <Ionicons 
+                                name="refresh-outline" 
+                                size={20} 
+                                color="#fff" 
+                                style={refreshing ? styles.rotating : null}
+                            />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.logoutButton} onPress={cerrarSesion}>
+                            <Ionicons name="log-out-outline" size={24} color="#fff" />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 {/* Tarjeta de información del usuario */}
                 <View style={styles.userCard}>
+                    {/* Indicador de carga para datos específicos */}
+                    {(usuario?.edad === 'Cargando...' || usuario?.especialidad === 'Cargando...') && (
+                        <View style={styles.loadingIndicator}>
+                            <ActivityIndicator size="small" color="#667eea" />
+                            <Text style={styles.loadingIndicatorText}>Actualizando datos...</Text>
+                        </View>
+                    )}
+
                     <View style={styles.avatarContainer}>
                         <Text style={styles.avatarText}>
                             {usuario?.nombre ? usuario.nombre.charAt(0).toUpperCase() : 'U'}
@@ -218,7 +314,9 @@ const HomeScreen = ({ navigation }) => {
                             <Ionicons name="calendar-outline" size={20} color="#667eea" />
                             <View style={styles.infoContent}>
                                 <Text style={styles.infoLabel}>Edad</Text>
-                                <Text style={styles.infoValue}>{usuario?.edad} años</Text>
+                                <Text style={styles.infoValue}>
+                                    {usuario?.edad === 'Cargando...' ? 'Cargando...' : `${usuario?.edad} años`}
+                                </Text>
                             </View>
                         </View>
 
@@ -256,7 +354,10 @@ const HomeScreen = ({ navigation }) => {
                 {/* Información adicional */}
                 <View style={styles.extraInfo}>
                     <Text style={styles.extraInfoText}>
-                        ¡Gracias por usar nuestra aplicación! 🎉
+                        Desliza hacia abajo para actualizar tu información
+                    </Text>
+                    <Text style={styles.extraInfoSubtext}>
+                        Última actualización: {new Date().toLocaleTimeString()}
                     </Text>
                 </View>
             </ScrollView>
@@ -282,6 +383,21 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 16,
         marginTop: 10,
+    },
+    loadingIndicator: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 8,
+        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+        borderRadius: 8,
+        marginBottom: 12,
+    },
+    loadingIndicatorText: {
+        marginLeft: 8,
+        color: '#667eea',
+        fontSize: 12,
+        fontWeight: '500',
     },
     errorBanner: {
         backgroundColor: 'rgba(255, 152, 0, 0.9)',
@@ -328,6 +444,19 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#fff',
         marginTop: 4,
+    },
+    headerButtons: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    refreshButton: {
+        padding: 10,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        marginRight: 8,
+    },
+    rotating: {
+        transform: [{ rotate: '360deg' }],
     },
     logoutButton: {
         padding: 10,
@@ -447,6 +576,12 @@ const styles = StyleSheet.create({
         fontSize: 16,
         textAlign: 'center',
         fontWeight: '500',
+        marginBottom: 4,
+    },
+    extraInfoSubtext: {
+        color: 'rgba(255, 255, 255, 0.8)',
+        fontSize: 12,
+        textAlign: 'center',
     },
 });
 

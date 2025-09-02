@@ -124,80 +124,121 @@ const RegisterScreen = ({ navigation }) => {
             });
             console.log('✅ DisplayName actualizado:', user.displayName);
 
-            // 3. Guardar información adicional en Firestore
+            // 3. Preparar datos completos para Firestore
             console.log('=== 💾 GUARDANDO EN FIRESTORE ===');
             console.log('🔥 Database object existe?:', !!database);
             console.log('🆔 User UID:', user.uid);
             
+            // ✅ CORRECCIÓN 1: Estructura completa de datos
             const userData = {
+                // Información básica
                 uid: user.uid,
-                nombre: usuario.nombre,
-                correo: usuario.correo,
+                nombre: usuario.nombre.trim(),
+                correo: usuario.correo.toLowerCase().trim(),
                 edad: parseInt(usuario.edad),
-                especialidad: usuario.especialidad,
+                especialidad: usuario.especialidad.trim(),
+                
+                // Información de autenticación (solo para referencia)
+                email: user.email, // Email de Firebase Auth
+                displayName: user.displayName, // Display name de Firebase Auth
+                
+                // Metadatos
                 fechaRegistro: new Date(),
-                activo: true
+                fechaCreacion: new Date().toISOString(),
+                activo: true,
+                verificado: user.emailVerified || false,
+                
+                // Información adicional útil
+                plataforma: Platform.OS, // 'android' o 'ios'
+                version: '1.0.0', // Versión de tu app
+                ultimaActualizacion: new Date().toISOString()
             };
-            console.log('📦 Datos a guardar:', userData);
-
-            // Crear referencia del documento
-            const docRef = doc(database, 'usuarios', user.uid);
-            console.log('📍 Document reference creada:', docRef.path);
-            console.log('🗂️ Collection:', docRef.parent.id);
-            console.log('📄 Document ID:', docRef.id);
-            // DIAGNÓSTICO TEMPORAL - Agregar justo antes del setDoc
-console.log('=== DIAGNÓSTICO COMPLETO ===');
-console.log('1. Firebase app:', !!auth.app);
-console.log('2. Database object:', !!database);
-console.log('3. User authenticated:', !!user);
-console.log('4. User UID:', user.uid);
-console.log('5. Database app name:', database.app.name);
-console.log('6. Database project:', database._delegate?._databaseId?.projectId);
-
-// Test de escritura directa
-try {
-    console.log('🧪 EJECUTANDO TEST DE ESCRITURA...');
-    const testRef = doc(database, 'test', 'diagnostico');
-    await setDoc(testRef, { 
-        timestamp: new Date(),
-        test: 'conexion',
-        uid: user.uid 
-    });
-    console.log('✅ Test de escritura EXITOSO');
-} catch (testError) {
-    console.log('❌ Test de escritura FALLÓ:', testError);
-    console.log('Error code:', testError.code);
-    console.log('Error message:', testError.message);
-    console.log('Error stack:', testError.stack);
-    throw testError; // Esto hará que se vea el error real
-}
-
-// Continúa con tu código normal del setDoc después de esto...
-            // Intentar guardar
-            console.log('⏳ Ejecutando setDoc...');
-            await setDoc(docRef, userData);
-            console.log('✅ setDoc ejecutado sin errores');
             
-            // VERIFICACIÓN INMEDIATA
-            console.log('🔍 Verificando que se guardó...');
+            console.log('📦 Datos completos a guardar:', userData);
+            console.log('📋 Campos incluidos:', Object.keys(userData));
+
+            // ✅ CORRECCIÓN 2: Referencia correcta del documento (solo UID)
+            const docRef = doc(database, 'usuarios', user.uid);
+
+
+            console.log('📍 Document reference creada:', docRef.path);
+            console.log('🗂️ Collection: usuarios');
+            console.log('📄 Document ID:', user.uid);
+
+            // ✅ CORRECCIÓN 3: Test de conectividad simplificado
+            console.log('🧪 EJECUTANDO TEST DE ESCRITURA...');
+            try {
+                const testRef = doc(database, 'usuarios', user.uid);
+                const testData = { 
+                    timestamp: new Date(),
+                    test: 'conexion_exitosa',
+                    uid: user.uid,
+                    platform: Platform.OS
+                };
+     
+               const test = await setDoc(docRef, userData);
+
+               console.log('📄 Documento de test escrito:', test);
+                console.log('✅ Test de escritura EXITOSO');
+                
+                // Verificar el test inmediatamente
+                const testVerify = await getDoc(testRef);
+                if (testVerify.exists()) {
+                    console.log('✅ Test verificado - Firestore funciona correctamente');
+                } else {
+                    console.log('⚠️ Test no se pudo verificar');
+                }
+                
+            } catch (testError) {
+                console.log('❌ Test de escritura FALLÓ:', testError.message);
+                throw new Error(`Error de conectividad con Firestore: ${testError.message}`);
+            }
+
+            // ✅ CORRECCIÓN 4: Guardar datos completos del usuario
+            console.log('⏳ Guardando datos completos del usuario...');
+            await setDoc(docRef, userData, { merge: false }); // merge: false para sobrescribir completamente
+            console.log('✅ setDoc ejecutado sin errores - TODOS los datos guardados');
+            
+            // ✅ CORRECCIÓN 5: Verificación completa
+            console.log('🔍 Verificando que TODOS los datos se guardaron...');
             const verificacion = await getDoc(docRef);
-            console.log('📊 Documento existe después del guardado?:', verificacion.exists());
             
             if (verificacion.exists()) {
                 const datosVerificados = verificacion.data();
-                console.log('✅ DATOS VERIFICADOS EN FIRESTORE:', datosVerificados);
+                console.log('✅ DOCUMENTO EXISTE - Verificando campos:');
+                console.log('🎯 UID:', datosVerificados.uid);
                 console.log('🎯 Nombre:', datosVerificados.nombre);
+                console.log('🎯 Correo:', datosVerificados.correo);
                 console.log('🎯 Edad:', datosVerificados.edad);
                 console.log('🎯 Especialidad:', datosVerificados.especialidad);
+                console.log('🎯 Fecha de registro:', datosVerificados.fechaRegistro);
+                console.log('🎯 Activo:', datosVerificados.activo);
+                console.log('🎯 Plataforma:', datosVerificados.plataforma);
+                
+                // Verificar que TODOS los campos esperados existen
+                const camposEsperados = ['uid', 'nombre', 'correo', 'edad', 'especialidad', 'fechaRegistro', 'activo'];
+                const camposFaltantes = camposEsperados.filter(campo => !(campo in datosVerificados));
+                
+                if (camposFaltantes.length > 0) {
+                    console.log('⚠️ CAMPOS FALTANTES:', camposFaltantes);
+                    Alert.alert('Advertencia', `Algunos datos no se guardaron: ${camposFaltantes.join(', ')}`);
+                } else {
+                    console.log('✅ TODOS LOS CAMPOS GUARDADOS CORRECTAMENTE');
+                }
+                
+                // Mostrar resumen de datos guardados
+                console.log('📊 RESUMEN COMPLETO DE DATOS GUARDADOS:');
+                console.table(datosVerificados);
+                
             } else {
-                console.log('❌ PROBLEMA: DOCUMENTO NO EXISTE DESPUÉS DEL SETDOC');
-                Alert.alert('Advertencia', 'Los datos no se guardaron correctamente en Firestore');
+                console.log('❌ PROBLEMA CRÍTICO: DOCUMENTO NO EXISTE DESPUÉS DEL SETDOC');
+                throw new Error('Los datos no se guardaron en Firestore');
             }
             
-            console.log('✅ PROCESO DE FIRESTORE COMPLETADO');
+            console.log('✅ PROCESO DE FIRESTORE COMPLETADO EXITOSAMENTE');
             
             // Mostrar mensaje de éxito
-            showToast('¡Registro exitoso!');
+            showToast('¡Registro exitoso! Todos los datos guardados.');
             
             // Limpiar formulario
             setUsuario({
@@ -221,7 +262,6 @@ try {
             console.log('Error name:', error.name);
             console.log('Error code:', error.code);
             console.log('Error message:', error.message);
-            console.log('Error stack:', error.stack);
             
             // Manejar errores específicos de Firebase Auth
             let errorMessage = 'Ocurrió un error al registrar el usuario';
@@ -245,11 +285,23 @@ try {
                 case 'firestore/unavailable':
                     errorMessage = 'Firestore no está disponible. Intenta más tarde';
                     break;
+                case 'firestore/deadline-exceeded':
+                    errorMessage = 'Tiempo de espera agotado. Verifica tu conexión';
+                    break;
                 default:
-                    errorMessage = 'Error: ' + error.message;
+                    errorMessage = error.message || 'Error desconocido durante el registro';
             }
             
             Alert.alert('Error de Registro', errorMessage);
+            
+            // Si el usuario se creó en Auth pero falló Firestore, informar
+            if (error.message && error.message.includes('Firestore') && auth.currentUser) {
+                Alert.alert(
+                    'Usuario creado parcialmente', 
+                    'Tu cuenta se creó en Firebase Auth, pero hubo un problema guardando los datos adicionales. Puedes intentar iniciar sesión.'
+                );
+            }
+            
         } finally {
             setCargando(false);
             console.log('🏁 PROCESO DE REGISTRO FINALIZADO');

@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Image, Animated, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { auth } from '../config/firebase';
+import { signOut } from 'firebase/auth';
 
 const { width, height } = Dimensions.get('window');
 
@@ -11,16 +13,38 @@ const SplashScreen = ({ navigation }) => {
   const progressWidth = new Animated.Value(0);
 
   useEffect(() => {
-    // Secuencia de animaciones - SIN navegación manual
-    const animateSequence = () => {
-      // 1. Animar el logo (escala)
+    // Función para cerrar sesión si existe una sesión activa
+    const cerrarSesionSiExiste = async () => {
+      try {
+        const user = auth.currentUser;
+        if (user) {
+          console.log('🚪 Usuario loggeado encontrado, cerrando sesión:', user.email);
+          await signOut(auth);
+          console.log('✅ Sesión cerrada exitosamente');
+        } else {
+          console.log('ℹ️ No hay sesión activa');
+        }
+      } catch (error) {
+        console.error('❌ Error al cerrar sesión:', error);
+        // Continuar con la navegación aunque haya error
+      }
+    };
+
+    // Secuencia de animaciones CON navegación forzada al Login
+    const animateAndNavigate = async () => {
+      console.log('🎬 Iniciando secuencia de Splash Screen');
+      
+      // 1. Cerrar sesión existente (si la hay)
+      await cerrarSesionSiExiste();
+
+      // 2. Animar el logo (escala)
       Animated.timing(logoScale, {
         toValue: 1,
         duration: 800,
         useNativeDriver: true,
       }).start();
 
-      // 2. Animar el texto (opacidad) después de 400ms
+      // 3. Animar el texto (opacidad) después de 400ms
       setTimeout(() => {
         Animated.timing(textOpacity, {
           toValue: 1,
@@ -29,7 +53,7 @@ const SplashScreen = ({ navigation }) => {
         }).start();
       }, 400);
 
-      // 3. Animar la barra de progreso después de 800ms
+      // 4. Animar la barra de progreso después de 800ms
       setTimeout(() => {
         Animated.timing(progressWidth, {
           toValue: width * 0.8,
@@ -38,12 +62,16 @@ const SplashScreen = ({ navigation }) => {
         }).start();
       }, 800);
 
-      // 4. NO HAY NAVEGACIÓN MANUAL - el Navigation component maneja esto automáticamente
-      // La pantalla Splash se mostrará hasta que onAuthStateChanged determine el estado del usuario
+      // 5. ✅ NAVEGACIÓN FORZADA AL LOGIN después de 3 segundos
+      setTimeout(() => {
+        console.log('🚀 Redirigiendo FORZADAMENTE al Login');
+        // Usar replace para que no se pueda volver al splash
+        navigation.replace('Login');
+      }, 3000);
     };
 
-    animateSequence();
-  }, []);
+    animateAndNavigate();
+  }, [navigation]);
 
   return (
     <LinearGradient
@@ -90,7 +118,7 @@ const SplashScreen = ({ navigation }) => {
               ]}
             />
           </View>
-          <Text style={styles.loadingText}>Verificando sesión...</Text>
+          <Text style={styles.loadingText}>Iniciando aplicación...</Text>
         </View>
       </View>
 
@@ -98,6 +126,7 @@ const SplashScreen = ({ navigation }) => {
       <View style={styles.footer}>
         <Text style={styles.footerText}>Powered by Firebase Auth</Text>
         <Text style={styles.versionText}>v1.0.0</Text>
+        <Text style={styles.debugText}>Modo: Siempre Login</Text>
       </View>
     </LinearGradient>
   );
@@ -195,6 +224,12 @@ const styles = StyleSheet.create({
   versionText: {
     color: 'rgba(255, 255, 255, 0.4)',
     fontSize: 10,
+    marginBottom: 4,
+  },
+  debugText: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 9,
+    fontStyle: 'italic',
   },
 });
 

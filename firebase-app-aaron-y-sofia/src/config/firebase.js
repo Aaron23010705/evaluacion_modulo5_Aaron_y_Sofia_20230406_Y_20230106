@@ -5,9 +5,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDuoMv2Yhy9ObBKsMudpjq-FVnzSUwf7Q0",
-  authDomain: "firebase-app-20230406-y-20230106.firebaseapp.com",
-  projectId: "firebase-app-20230406-y-20230106",
-  storageBucket: "firebase-app-20230406-y-20230106.appspot.com",
+  authDomain: "practica-20230406-y-2023-3f766.firebaseapp.com",
+  projectId: "practica-20230406-y-2023-3f766",
+  storageBucket: "practica-20230406-y-2023-3f766.firebasestorage.app",
   messagingSenderId: "636152997394",
   appId: "1:636152997394:web:8a6e7b4bc95ed61f5fdacb"
 };
